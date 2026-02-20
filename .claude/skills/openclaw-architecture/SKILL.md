@@ -1,3 +1,8 @@
+---
+name: openclaw-architecture
+description: OpenClaw system architecture overview - gateway, plugins, agents, channels
+---
+
 # OpenClaw System Architecture
 
 ## Overview
@@ -43,14 +48,14 @@ OpenClaw is a self-hosted AI assistant gateway that connects LLM agents to messa
 
 ## Core Components
 
-| Component | Description | Sub-skill |
-|-----------|-------------|-----------|
-| **Gateway** | WebSocket/HTTP server, auth, sessions | [gateway.md](openclaw-architecture/gateway.md) |
-| **Plugins** | Extension system, 10 plugin types | [plugins.md](openclaw-architecture/plugins.md) |
-| **Agents** | Tool pipeline, policy chain, sandbox | [agents.md](openclaw-architecture/agents.md) |
-| **Channels** | Messaging integrations, routing | [channels.md](openclaw-architecture/channels.md) |
-| **Config** | Settings, validation, hot-reload | [config.md](openclaw-architecture/config.md) |
-| **CLI** | Commands, TUI, shell completion | [cli.md](openclaw-architecture/cli.md) |
+| Component | Description |
+|-----------|-------------|
+| **Gateway** | WebSocket/HTTP server, auth, sessions |
+| **Plugins** | Extension system, 10 plugin types |
+| **Agents** | Tool pipeline, policy chain, sandbox |
+| **Channels** | Messaging integrations, routing |
+| **Config** | Settings, validation, hot-reload |
+| **CLI** | Commands, TUI, shell completion |
 
 ## Key Concepts
 
@@ -121,21 +126,3 @@ openclaw gateway stop         # Stop
 - `~/.openclaw/openclaw.json` - Main config file
 - `~/.openclaw/extensions/` - User plugins
 - `~/.openclaw/agents/` - Agent state, sessions
-
-## Source Code Layout
-```
-src/
-├── cli/           # CLI commands
-├── gateway/       # Gateway server
-├── agents/        # Agent runtime, tools
-├── plugins/       # Plugin system
-├── channels/      # Channel abstraction
-├── config/        # Config schema/validation
-└── infra/         # Infrastructure (locks, TLS)
-
-extensions/        # Stock plugins
-├── telegram/
-├── whatsapp/
-├── discord/
-└── ...
-```

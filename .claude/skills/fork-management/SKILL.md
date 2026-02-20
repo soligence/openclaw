@@ -1,3 +1,8 @@
+---
+name: fork-management
+description: How to sync this fork with upstream OpenClaw releases
+---
+
 # Fork Management
 
 This repo (`soligence/openclaw`) is a fork of `openclaw/openclaw`.
@@ -51,10 +56,8 @@ git push origin main
 ## Your Customizations
 
 Keep custom files in these locations:
-- `.claude/` - Claude skills and settings
-- `docs/` - Your documentation
+- `.claude/skills/` - Claude skills
 - `skills/` - Custom OpenClaw skills
-- `*.ps1`, `*.bat` - Windows convenience scripts
 
 These stay separate from upstream code, making merges clean.
 

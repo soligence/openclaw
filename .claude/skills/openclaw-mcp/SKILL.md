@@ -1,3 +1,8 @@
+---
+name: openclaw-mcp
+description: How to connect MCP servers to OpenClaw using the adapter plugin
+---
+
 # OpenClaw MCP Server Management
 
 ## Overview
@@ -102,20 +107,16 @@ Set variables in `~/.openclaw/.env`.
 
 ## Commands
 
-### Restart gateway after config changes
-```powershell
-.\stop.ps1
-.\start.ps1
-```
+```bash
+# Restart gateway after config changes
+openclaw gateway stop
+openclaw gateway
 
-### Check plugin status
-```powershell
-pnpm --dir "C:\projects\openclaw-official" openclaw plugins list
-```
+# Check plugin status
+openclaw plugins list
 
-### View logs
-```powershell
-pnpm --dir "C:\projects\openclaw-official" openclaw logs --follow
+# View logs
+openclaw logs --follow
 ```
 
 ## Troubleshooting
