@@ -241,6 +241,161 @@ Optional browser-based management interface:
 
 Access at `http://localhost:18789/` when enabled.
 
+## Docker Deployment (Dan's Setup)
+
+When running the gateway inside Docker via `docker-compose.yml`, there are two interacting concepts that are easy to confuse:
+
+### Gateway Deployment vs Agent Sandbox
+
+| Concept | What it controls | Config |
+|---------|-----------------|--------|
+| **Gateway deployment** | Where the gateway process runs (host vs container) | `docker-compose.yml` |
+| **Agent sandbox mode** | Where agent tool execution happens | `agents.defaults.sandbox.mode` |
+
+### Sandbox Mode + Docker = Docker-in-Docker Problem
+
+The sandbox mode (`agents.defaults.sandbox.mode`) controls whether agent sessions spawn Docker containers for tool isolation:
+
+| Mode | Behavior | Docker-in-Docker needed? |
+|------|----------|--------------------------|
+| `"off"` | All tools run directly in the gateway process | No |
+| `"non-main"` (default) | Non-main sessions (channels, groups, cron jobs) spawn Docker containers | Yes |
+| `"all"` | Every session spawns a Docker container | Yes |
+
+**When the gateway itself runs in Docker** (our setup), `"non-main"` or `"all"` causes isolated sessions to try spawning Docker containers from inside a container. This fails with `spawn docker EACCES` because the container has no access to the host's Docker daemon.
+
+### The Fix
+
+Set `sandbox.mode: "off"` in `openclaw.json`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "off"
+      }
+    }
+  }
+}
+```
+
+**Why this is correct and secure:** The Docker container IS the sandbox. Setting `"off"` means tools run inside the existing container — which is already isolated from the host. Mounting the Docker socket (`/var/run/docker.sock`) as an alternative is worse because it gives the container root-level access to the host.
+
+### What This Affects
+
+- **Main DM sessions**: Work fine with any sandbox mode (they're "main")
+- **Telegram/channel sessions**: Affected by `"non-main"` — will fail in Docker
+- **Isolated cron jobs**: Session key is `cron:<jobId>`, which is non-main — will fail in Docker
+- **Subagent sessions**: Also non-main — will fail in Docker
+
+### Related Config
+
+- `gateway.mode: "local"` — tells OpenClaw the gateway runs directly (even inside Docker)
+- Cron job errors trigger exponential backoff (30s, 1m, 5m, 15m, 60m) — force-run with `openclaw cron run <jobId>` to reset
+
+### Known Issues
+
+- GitHub #5339: Telegram cron announce delivery can silently fail
+- GitHub #13420: Cron announce delivery may ignore configured channel
+
+## Sessions: How Conversations Work
+
+OpenClaw has two types of sessions that behave very differently:
+
+### Main Session (persistent, resets daily)
+
+- **Key:** `agent:main:main`
+- **What goes here:** All Telegram DMs + heartbeat polls share this one conversation
+- **Context:** Accumulates throughout the day — each new message sees all prior messages
+- **Reset:** Daily at 4:00 AM gateway local time (UTC inside Docker = 11 PM ET)
+- **Manual reset:** Send `/new` in Telegram to force a fresh session
+- **File:** `~/.openclaw/agents/main/sessions/<sessionId>.jsonl`
+
+### Isolated Cron Session (fresh every run)
+
+- **Key:** `cron:<jobId>:run:<random-uuid>`
+- **What goes here:** Each cron job run gets its own brand new session
+- **Context:** Zero conversation history — only sees system prompt + workspace files + cron message
+- **Cannot see:** Telegram chats, prior briefings, or any main session context
+- **Implication:** Quality depends on what the agent finds in workspace files each run (inconsistent)
+
+### Session Lifecycle
+
+```
+11 PM ET (4 AM UTC)  → Main session resets (new session ID)
+5 AM ET              → Cron daily briefing runs (fresh isolated session)
+7-8 AM ET            → First heartbeat of the day (main session)
+Throughout day       → Telegram DMs accumulate in main session
+11 PM ET             → Session resets again
+```
+
+### Workspace Files = The Agent's Memory Between Sessions
+
+Since isolated cron sessions have no conversation context, the agent relies entirely on workspace files for continuity:
+
+- `AGENTS.md` — instructions for how to behave
+- `SOUL.md` — personality/identity
+- `USER.md` — info about Dan
+- `MEMORY.md` — long-term curated memory (only loaded in main session for privacy)
+- `TODO.md` — task list (critical for daily briefing quality)
+- `memory/YYYY-MM-DD.md` — daily notes
+
+**If TODO.md is empty, the daily briefing will be generic.** The agent can't remember what it read yesterday because each cron run is a blank slate. Keep workspace files populated.
+
+## Heartbeat vs Cron Jobs
+
+Two different mechanisms for proactive agent behavior:
+
+### Heartbeat
+
+- Periodic pulse injected into the **main session** (same conversation as Telegram DMs)
+- Default: every 30 minutes
+- Agent checks HEARTBEAT.md and decides whether to act or reply HEARTBEAT_OK
+- **Use for:** Checking email, calendar, notifications — anything that benefits from main session context
+- **Cost warning:** Each heartbeat is an API call (~$0.02-0.025). At 30-min intervals that's 48 calls/day
+
+### Cron Job
+
+- Scheduled task that runs in a **separate fresh session** (or optionally main session)
+- Fires at exact times (cron expression)
+- Output delivered via announce (Telegram), webhook, or none
+- **Use for:** Daily briefings, weekly summaries, exact-schedule tasks
+
+### Configuration
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "heartbeat": {
+        "every": "24h",
+        "activeHours": {
+          "start": "08:00",
+          "end": "09:00",
+          "timezone": "America/New_York"
+        }
+      }
+    }
+  }
+}
+```
+
+- `every`: Interval — `"30m"`, `"1h"`, `"24h"`, or `"0m"` to disable
+- `activeHours.start/end`: Window when heartbeats can fire (HH:MM format)
+- `activeHours.timezone`: IANA timezone (falls back to host timezone)
+
+**Current setup:** Once daily at 8-9 AM ET. Increase frequency when email/calendar integrations are connected.
+
+### Cost Optimization
+
+| Heartbeat interval | Calls/day | Approx cost/day | When to use |
+|-------------------|-----------|-----------------|-------------|
+| `"30m"` | 48 | ~$1.00-1.20 | Email + calendar connected, need real-time checks |
+| `"2h"` | 12 | ~$0.25-0.30 | Some integrations, periodic checks sufficient |
+| `"24h"` | 1 | ~$0.02-0.03 | No integrations yet (current setup) |
+| `"0m"` | 0 | $0 | Disabled — rely on cron + direct messages only |
+
 ## CLI Commands
 
 ```bash
