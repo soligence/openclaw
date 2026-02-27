@@ -1,13 +1,10 @@
-# Local overrides for soligence/openclaw fork.
-# Copy to docker-compose.override.yml (gitignored) and fill in values.
+# Fork-local overrides (soligence/openclaw).
+# Docker Compose auto-merges this on top of docker-compose.yml.
 #
-# Named volumes replace bind mounts — create them once:
+# Named volumes replace upstream's bind-mount env vars.
+# Create them once:
 #   docker volume create openclaw-config
 #   docker volume create openclaw-workspace
-#
-# Seed with existing config (optional):
-#   docker run --rm -v openclaw-config:/dest -v /path/to/config:/src \
-#     alpine sh -c "cp -a /src/. /dest/ && chown -R 1000:1000 /dest"
 
 services:
   openclaw-gateway:
