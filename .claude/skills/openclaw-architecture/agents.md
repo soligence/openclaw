@@ -108,23 +108,9 @@ createOpenClawCodingTools()
 
 ### 2.2 Tool Type System
 
-```typescript
-// From tools/common.ts + @mariozechner/pi-agent-core
-type AnyAgentTool = AgentTool<any, unknown>
+Each tool (AgentTool) has four required fields: `name`, `description`, `schema` (JSON Schema for parameters), and `execute` (async function receiving toolCallId, params, signal, and onUpdate callback, returning an AgentToolResult).
 
-AgentTool = {
-  name: string
-  description: string
-  schema: JSONSchema
-  execute?: (toolCallId, params, signal, onUpdate) => Promise<AgentToolResult>
-}
-
-AgentToolResult = {
-  content: Array<{ type: "text", text: string } | { type: "image", data, mimeType }>
-  details?: unknown
-  isError?: boolean
-}
-```
+An AgentToolResult contains: `content` (array of text or image blocks), optional `details`, and optional `isError` flag.
 
 ---
 
@@ -134,11 +120,7 @@ The policy system is layered: each layer can restrict (deny) or permit (allow) t
 
 ### 3.1 Policy Types
 
-```
-SandboxToolPolicy = { allow?: string[], deny?: string[] }
-
-ToolPolicyLike   = { allow?: string[], deny?: string[] }  (broader interface)
-```
+A tool policy is an object with optional `allow` and `deny` string arrays. Both `SandboxToolPolicy` and `ToolPolicyLike` follow this shape.
 
 ### 3.2 Policy Resolution Order (pi-tools.policy.ts → tool-policy-pipeline.ts)
 
@@ -246,22 +228,22 @@ Orchestrator sub-agents (depth < maxSpawnDepth) retain `sessions_spawn` to manag
 
 ### 4.1 Sandbox Context
 
-```typescript
-SandboxContext = {
-  enabled: boolean
-  sessionKey: string
-  workspaceDir: string        // host-side workspace
-  agentWorkspaceDir: string   // agent-specific workspace
-  workspaceAccess: "none" | "ro" | "rw"
-  containerName: string
-  containerWorkdir: string    // path inside container
-  docker: SandboxDockerConfig
-  tools: SandboxToolPolicy    // separate allow/deny for sandboxed tools
-  browserAllowHostControl: boolean
-  browser?: SandboxBrowserContext  // CDP bridge for browser automation
-  fsBridge?: SandboxFsBridge  // filesystem proxy for sandboxed reads/writes
-}
-```
+The SandboxContext contains:
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Whether sandbox is active |
+| `sessionKey` | Current session identifier |
+| `workspaceDir` | Host-side workspace path |
+| `agentWorkspaceDir` | Agent-specific workspace path |
+| `workspaceAccess` | Access level: `"none"`, `"ro"`, or `"rw"` |
+| `containerName` | Docker/Podman container name |
+| `containerWorkdir` | Path inside the container |
+| `docker` | Docker/Podman configuration |
+| `tools` | Separate allow/deny for sandboxed tools |
+| `browserAllowHostControl` | Whether CDP bridge is enabled |
+| `browser` | Optional sandbox browser context |
+| `fsBridge` | Optional filesystem proxy for sandboxed reads/writes |
 
 ### 4.2 Sandbox Scope Modes
 
@@ -282,15 +264,7 @@ Key security defaults:
 
 ### 4.4 Sandbox Tool Policy
 
-Sandboxed agents have their own tool allow/deny separate from the main policy pipeline:
-
-```
-resolveSandboxToolPolicyForAgent():
-  - Agent-level config (agents[].tools.sandbox.tools.allow/deny) takes priority
-  - Falls back to global config (tools.sandbox.tools.allow/deny)
-  - Falls back to DEFAULT_TOOL_ALLOW / DEFAULT_TOOL_DENY constants
-  - `image` tool is always included unless explicitly denied (multimodal support)
-```
+Sandboxed agents have their own tool allow/deny separate from the main policy pipeline. Resolution order: agent-level config (`agents[].tools.sandbox.tools.allow/deny`) takes priority, then global config (`tools.sandbox.tools.allow/deny`), then DEFAULT_TOOL_ALLOW / DEFAULT_TOOL_DENY constants. The `image` tool is always included unless explicitly denied (multimodal support).
 
 ### 4.5 Filesystem Bridge
 
@@ -345,31 +319,11 @@ Providers are abstracted behind the `@mariozechner/pi-ai` `Api`/`Model` interfac
 
 ### 5.3 Auth Profile Rotation
 
-```
-resolveAuthProfileOrder(cfg, store, provider, preferredProfile)
-→ ordered list of profile IDs to try
-
-For each profile candidate:
-  1. Check cooldown (isProfileInCooldown)
-  2. getApiKeyForModel(authStore, provider, model)
-  3. Attempt LLM call
-  4. On auth/billing error → markAuthProfileFailure(), try next
-  5. On success → markAuthProfileGood()
-```
+Auth profiles are tried in order via `resolveAuthProfileOrder()`. For each candidate: check cooldown status, retrieve API key, attempt the LLM call. On auth/billing failure, mark the profile failed and try the next. On success, mark it good.
 
 ### 5.4 LLM Call Interface
 
-All providers are called via `streamSimple()` from `@mariozechner/pi-ai`, which returns an async event stream:
-
-```
-Events:
-  text_delta       → streaming text
-  tool_call_start  → tool invocation begins
-  tool_call_delta  → streaming args
-  tool_call_end    → complete args, ready to execute
-  message_end      → turn complete (stop_reason, usage)
-  error            → stream error
-```
+All providers are called via `streamSimple()` from `@mariozechner/pi-ai`, which returns an async event stream with events: `text_delta` (streaming text), `tool_call_start` (tool invocation begins), `tool_call_delta` (streaming args), `tool_call_end` (complete args, ready to execute), `message_end` (turn complete with stop_reason and usage), and `error` (stream error).
 
 ---
 

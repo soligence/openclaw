@@ -29,8 +29,8 @@ OpenClaw is a self-hosted AI assistant gateway that connects LLM agents to messa
            ▼                      ▼                      ▼
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐
 │  Agent Runtime   │  │  Plugin System   │  │   Channel Integrations   │
-│  - Tool pipeline │  │  - 10 plugin     │  │  - Telegram, WhatsApp    │
-│  - Policy chain  │  │    types         │  │  - Discord, Slack, etc.  │
+│  - Tool pipeline │  │  - 10 register   │  │  - Telegram, WhatsApp    │
+│  - Policy chain  │  │    methods       │  │  - Discord, Slack, etc.  │
 │  - Sandbox       │  │  - Discovery     │  │  - Message routing       │
 │  - LLM providers │  │  - Lifecycle     │  │  - Session keys          │
 └──────────────────┘  └──────────────────┘  └──────────────────────────┘
@@ -46,16 +46,18 @@ OpenClaw is a self-hosted AI assistant gateway that connects LLM agents to messa
                     └─────────────────────────┘
 ```
 
-## Core Components
+## Documentation Map
 
-| Component | Description |
-|-----------|-------------|
-| **Gateway** | WebSocket/HTTP server, auth, sessions |
-| **Plugins** | Extension system, 10 plugin types |
-| **Agents** | Tool pipeline, policy chain, sandbox |
-| **Channels** | Messaging integrations, routing |
-| **Config** | Settings, validation, hot-reload |
-| **CLI** | Commands, TUI, shell completion |
+| Component | When to Read | File |
+|-----------|-------------|------|
+| **Gateway** | Server architecture, auth, WebSocket, startup | [gateway.md](gateway.md) |
+| **Agents** | Tool pipeline, sandbox, LLM providers, failover | [agents.md](agents.md) |
+| **Channels** | Message routing, channel plugins, adapters | [channels.md](channels.md) |
+| **Plugins** | Extension system, registration API, hooks | [plugins.md](plugins.md) |
+| **CLI** | Commands, TUI, shell completion | [cli.md](cli.md) |
+| **Config** | Schema, validation, hot-reload, $include | [config.md](config.md) |
+| **Sessions** | Session lifecycle, heartbeat, cron jobs | [sessions.md](sessions.md) |
+| **Deployment** | Docker setup, named volumes, sandbox config | [deployment.md](deployment.md) |
 
 ## Key Concepts
 
@@ -63,66 +65,37 @@ OpenClaw is a self-hosted AI assistant gateway that connects LLM agents to messa
 ```
 agent:<agentId>:<channel>:<chatType>:<peerId>[:thread:<threadId>]
 ```
-Example: `agent:main:telegram:direct:12345678`
+Example: `agent:main:telegram:direct:12345678` → see [sessions.md](sessions.md)
 
 ### Tool Policy Pipeline
 ```
 profile → byProvider → global → agent → group → sandbox
 ```
-Each layer can allow/deny tools. Sandbox is most restrictive.
+Each layer can allow/deny tools. Sandbox is most restrictive. → see [agents.md](agents.md)
 
-### Plugin Types
-1. Channel (messaging platforms)
-2. Provider (LLM/auth)
-3. Tool (agent tools)
-4. Memory (exclusive slot)
-5. Service (background)
-6. CLI (extend commands)
-7. Hook (lifecycle events)
-8. Command (slash commands)
-9. HTTP (routes)
-10. Gateway method (WebSocket RPC)
+### Plugin Registration Methods
+OpenClaw has **1 exclusive plugin kind** (`"memory"` — only one active at a time) and **10 registration methods** that any plugin can use simultaneously:
+
+1. `registerChannel` (messaging platforms)
+2. `registerProvider` (LLM/auth)
+3. `registerTool` (agent tools)
+4. `registerService` (background)
+5. `registerCli` (extend commands)
+6. `registerHook` (lifecycle events)
+7. `registerCommand` (slash commands)
+8. `registerHttpHandler` / `registerHttpRoute` (HTTP routes)
+9. `registerGatewayMethod` (WebSocket RPC)
+
+A single plugin can call multiple registration methods. → see [plugins.md](plugins.md)
 
 ### Config Hierarchy
 ```
 Runtime defaults → Config file → $include → process.env → config.env → Runtime overrides
 ```
-
-## Quick Reference
-
-### Start/Stop Gateway
-```bash
-openclaw gateway              # Start
-openclaw gateway stop         # Stop
-```
-
-### Enable Plugin
-```json
-{
-  "plugins": {
-    "entries": {
-      "plugin-id": { "enabled": true }
-    }
-  }
-}
-```
-
-### Allow Plugin Tools
-```json
-{
-  "tools": {
-    "allow": ["group:openclaw", "group:plugins"]
-  },
-  "agents": {
-    "defaults": {
-      "sandbox": { "mode": "non-main" }
-    }
-  }
-}
-```
+→ see [config.md](config.md)
 
 ### Key Directories
-- `~/.openclaw/` - Config, state, extensions
-- `~/.openclaw/openclaw.json` - Main config file
-- `~/.openclaw/extensions/` - User plugins
-- `~/.openclaw/agents/` - Agent state, sessions
+- `~/.openclaw/` — Config, state, extensions
+- `~/.openclaw/openclaw.json` — Main config file
+- `~/.openclaw/extensions/` — User plugins
+- `~/.openclaw/agents/` — Agent state, sessions

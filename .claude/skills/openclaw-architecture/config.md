@@ -110,147 +110,28 @@ The root schema is `OpenClawSchema` (Zod) exported from `src/config/zod-schema.t
 
 ### `meta`
 
-Auto-stamped on every config write. Do not edit manually.
-
-```json5
-{
-  meta: {
-    lastTouchedVersion: "1.2.3",
-    lastTouchedAt: "2026-02-18T00:00:00.000Z"
-  }
-}
-```
+Auto-stamped on every config write with `lastTouchedVersion` and `lastTouchedAt`. Do not edit manually.
 
 ### `env`
 
-Inject environment variables that will be available to OpenClaw and can be referenced via `${VAR}` syntax in other config values.
-
-```json5
-{
-  env: {
-    // Inline key-value pairs (applied when not already set in process env)
-    ANTHROPIC_API_KEY: "sk-ant-...",
-
-    // Structured form (same effect)
-    vars: {
-      OPENAI_API_KEY: "sk-..."
-    },
-
-    // Shell env fallback: exec login shell and import missing secrets
-    shellEnv: {
-      enabled: true,
-      timeoutMs: 15000
-    }
-  }
-}
-```
+Injects environment variables available to OpenClaw and referenceable via `${VAR}` syntax in other config values. Supports inline key-value pairs (applied when not already set in process env), a structured `vars` object (same effect), and a `shellEnv` sub-object that can exec the login shell to import missing secrets (with configurable timeout).
 
 **Shell env expected keys (auto-imported if missing):**
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_OAUTH_TOKEN`, `GEMINI_API_KEY`, `ZAI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `MINIMAX_API_KEY`, `ELEVENLABS_API_KEY`, `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_GATEWAY_PASSWORD`
 
 ### `auth`
 
-Auth profile definitions for AI providers:
-
-```json5
-{
-  auth: {
-    profiles: {
-      "my-anthropic": {
-        provider: "anthropic",
-        mode: "api_key",  // or "oauth" | "token"
-        email: "user@example.com"  // optional, for oauth
-      }
-    },
-    order: {
-      anthropic: ["my-anthropic"]  // profile selection order
-    },
-    cooldowns: {
-      billingBackoffHours: 1,
-      billingMaxHours: 24,
-      failureWindowHours: 6
-    }
-  }
-}
-```
+Auth profile definitions for AI providers. Contains `profiles` (named credentials with provider, mode, and optional email), `order` (per-provider profile selection priority), and `cooldowns` (billing backoff and failure window settings).
 
 ### `models`
 
-Define AI provider endpoints and model catalogs:
-
-```json5
-{
-  models: {
-    mode: "merge",  // "merge" (default) or "replace" built-in catalog
-    providers: {
-      "my-provider": {
-        baseUrl: "https://api.openai.com/v1",
-        apiKey: "${MY_PROVIDER_API_KEY}",
-        api: "openai-completions",  // API adapter type
-        models: [
-          {
-            id: "gpt-5",
-            name: "GPT-5",
-            contextWindow: 200000,
-            maxTokens: 8192,
-            input: ["text", "image"],
-            cost: { input: 5, output: 15 }  // per million tokens
-          }
-        ]
-      }
-    }
-  }
-}
-```
+Define AI provider endpoints and model catalogs. Key fields: `mode` (`"merge"` default or `"replace"` built-in catalog), and `providers` (a map of provider configs each with `baseUrl`, `apiKey`, `api` adapter type, and `models` array with id/name/contextWindow/maxTokens/input types/cost).
 
 Supported `api` values: `openai-completions`, `openai-responses`, `anthropic-messages`, `google-generative-ai`, `github-copilot`, `bedrock-converse-stream`, `ollama`
 
 ### `agents`
 
-Global agent defaults and named agent list:
-
-```json5
-{
-  agents: {
-    defaults: {
-      model: {
-        primary: "anthropic/claude-opus-4-6",
-        fallbacks: ["openai/gpt-5"]
-      },
-      workspace: "/path/to/workspace",
-      maxConcurrent: 3,       // default: 3
-      timeoutSeconds: 300,
-      contextTokens: 100000,
-      contextPruning: {
-        mode: "cache-ttl",    // default (auto-applied)
-        ttl: "1h",
-        keepLastAssistants: 2
-      },
-      compaction: {
-        mode: "safeguard",    // default (auto-applied)
-        maxHistoryShare: 0.7
-      },
-      heartbeat: {
-        every: "30m",         // auto-set based on auth mode
-        target: "last"
-      },
-      sandbox: { /* docker/podman config */ }
-    },
-    list: [
-      {
-        id: "my-agent",
-        default: true,
-        identity: {
-          name: "MyBot",
-          avatar: "avatar.png"
-        },
-        model: { primary: "anthropic/claude-sonnet-4-5" },
-        workspace: "/custom/workspace"
-      }
-    ]
-  }
-}
-```
+Global agent defaults and named agent list. The `defaults` object sets model (primary + fallbacks), workspace, maxConcurrent (default 3), timeoutSeconds, contextTokens, contextPruning, compaction, heartbeat, and sandbox config. The `list` array contains named agent entries that can override any default, each with an `id`, optional `default: true` flag, `identity` (name/avatar), and any field from defaults.
 
 **Auto-applied defaults (not written to file):**
 - `agents.defaults.maxConcurrent` = 3
@@ -261,202 +142,37 @@ Global agent defaults and named agent list:
 
 ### `gateway`
 
-HTTP server and remote connection settings:
-
-```json5
-{
-  gateway: {
-    port: 18789,              // default port
-    mode: "local",            // "local" | "remote"
-    bind: "loopback",         // "auto" | "lan" | "loopback" | "custom" | "tailnet"
-    auth: {
-      mode: "token",          // "token" | "password" | "trusted-proxy"
-      token: "${OPENCLAW_GATEWAY_TOKEN}"
-    },
-    controlUi: {
-      enabled: true,
-      basePath: "/",
-      allowedOrigins: ["*"]
-    },
-    reload: {
-      mode: "hybrid",         // "off" | "restart" | "hot" | "hybrid"
-      debounceMs: 500
-    },
-    tls: {
-      enabled: false,
-      autoGenerate: true
-    },
-    remote: {
-      url: "https://my-server.com",
-      transport: "ssh",       // "ssh" | "direct"
-      token: "${REMOTE_TOKEN}"
-    }
-  }
-}
-```
+HTTP server and remote connection settings. Key fields: `port` (default 18789), `mode` (`"local"` or `"remote"`), `bind` (`"auto"`, `"lan"`, `"loopback"`, `"custom"`, `"tailnet"`), `auth` (mode + token/password/trusted-proxy), `controlUi` (enabled, basePath, allowedOrigins), `reload` (mode: off/restart/hot/hybrid, debounceMs), `tls` (enabled, autoGenerate), `remote` (url, transport: ssh/direct, token).
 
 ### `channels`
 
-Per-channel configuration (validated against channel registry):
-
-```json5
-{
-  channels: {
-    slack: {
-      botToken: "${SLACK_BOT_TOKEN}",
-      appToken: "${SLACK_APP_TOKEN}",
-      // channel-specific settings...
-    },
-    discord: {
-      token: "${DISCORD_BOT_TOKEN}",
-      // discord-specific settings...
-    },
-    telegram: {
-      token: "${TELEGRAM_BOT_TOKEN}"
-    }
-    // defaults: { /* applied to all channels */ }
-  }
-}
-```
-
-Unknown channel IDs produce validation errors unless provided by a registered plugin.
+Per-channel configuration validated against the channel registry. Each channel key (slack, discord, telegram, etc.) contains channel-specific settings (tokens, bot config). A `defaults` sub-object applies settings across all channels. Unknown channel IDs produce validation errors unless provided by a registered plugin.
 
 ### `plugins`
 
-Plugin management:
-
-```json5
-{
-  plugins: {
-    enabled: true,
-    allow: ["my-plugin"],     // allowlist (empty = all allowed)
-    deny: ["bad-plugin"],     // denylist
-    load: {
-      paths: ["./my-plugins"] // extra plugin dirs to scan
-    },
-    slots: {
-      memory: "mem-plugin-id" // which plugin fills the memory slot
-    },
-    entries: {
-      "my-plugin": {
-        enabled: true,
-        config: { /* plugin-specific config */ }
-      }
-    },
-    installs: {
-      "my-plugin": {
-        source: "npm",        // "npm" | "archive" | "path"
-        spec: "my-plugin@1.0.0"
-      }
-    }
-  }
-}
-```
+Plugin management. Key fields: `enabled` (global toggle), `allow`/`deny` lists, `load.paths` (extra plugin dirs to scan), `slots.memory` (which plugin fills the memory slot), `entries` (per-plugin enabled flag + config), `installs` (source: npm/archive/path, spec).
 
 ### `skills`
 
-Skill (slash command) loading and configuration:
-
-```json5
-{
-  skills: {
-    allowBundled: ["commit", "review-pr"],  // allow specific bundled skills
-    load: {
-      extraDirs: ["./skills"],
-      watch: true,
-      watchDebounceMs: 300
-    },
-    install: {
-      preferBrew: false,
-      nodeManager: "npm"  // "npm" | "pnpm" | "yarn" | "bun"
-    },
-    entries: {
-      "my-skill": {
-        enabled: true,
-        apiKey: "${SKILL_API_KEY}",
-        env: { EXTRA_VAR: "value" },
-        config: { /* skill-specific */ }
-      }
-    }
-  }
-}
-```
+Skill (slash command) loading and configuration. Key fields: `allowBundled` (list of allowed bundled skills), `load` (extraDirs, watch, watchDebounceMs), `install` (preferBrew, nodeManager: npm/pnpm/yarn/bun), `entries` (per-skill enabled flag, apiKey, env, config).
 
 ### `memory`
 
-Memory backend configuration:
-
-```json5
-{
-  memory: {
-    backend: "builtin",     // "builtin" | "qmd"
-    citations: "auto",      // "auto" | "on" | "off"
-    qmd: {
-      command: "qmd",
-      searchMode: "query",  // "query" | "search" | "vsearch"
-      paths: [{ path: "./knowledge", name: "docs" }],
-      update: {
-        interval: "5m",
-        onBoot: true
-      },
-      limits: {
-        maxResults: 10,
-        maxSnippetChars: 500
-      }
-    }
-  }
-}
-```
+Memory backend configuration. Key fields: `backend` (`"builtin"` or `"qmd"`), `citations` (`"auto"`, `"on"`, `"off"`), `qmd` sub-object with command, searchMode (query/search/vsearch), paths, update interval, and result limits.
 
 ### `cron`
 
-Scheduled job runner:
-
-```json5
-{
-  cron: {
-    enabled: true,
-    store: "./cron-store",
-    maxConcurrentRuns: 3,
-    webhook: "https://my-server.com/webhook",
-    webhookToken: "${CRON_WEBHOOK_TOKEN}",
-    sessionRetention: "7d"  // or false to disable
-  }
-}
-```
+Scheduled job runner. Key fields: `enabled`, `store` (storage path), `maxConcurrentRuns`, `webhook` URL + `webhookToken`, `sessionRetention` (duration or false).
 
 ### `logging`
 
-```json5
-{
-  logging: {
-    level: "info",          // "silent" | "fatal" | "error" | "warn" | "info" | "debug" | "trace"
-    file: "./logs/openclaw.log",
-    consoleLevel: "warn",
-    consoleStyle: "pretty", // "pretty" | "compact" | "json"
-    redactSensitive: "tools",  // default (auto-applied); "off" | "tools"
-    redactPatterns: ["sk-ant-.*"]
-  }
-}
-```
+Log configuration. Key fields: `level` (silent through trace), `file` (log file path), `consoleLevel`, `consoleStyle` (pretty/compact/json), `redactSensitive` (default `"tools"`; `"off"` to disable), `redactPatterns` (regex patterns for additional redaction).
 
 ---
 
 ## Environment Variable Substitution
 
-Config string values support `${VAR_NAME}` syntax for env var injection:
-
-```json5
-{
-  models: {
-    providers: {
-      "my-provider": {
-        apiKey: "${MY_API_KEY}"
-      }
-    }
-  }
-}
-```
+Config string values support `${VAR_NAME}` syntax for env var injection.
 
 **Rules:**
 - Only uppercase names matching `[A-Z_][A-Z0-9_]*` are substituted
@@ -472,23 +188,7 @@ On **write**, the system restores `${VAR}` references in unchanged fields to avo
 
 ## Config Includes (`$include`)
 
-Split large configs into modular files:
-
-```json5
-// openclaw.json
-{
-  "$include": "./base.json5",   // single file include
-  gateway: {
-    port: 18789
-  }
-}
-
-// Or merge multiple files
-{
-  "$include": ["./base.json5", "./channels.json5"],
-  models: { /* local overrides */ }
-}
-```
+Split large configs into modular files using a `$include` key pointing to a single file path or an array of file paths.
 
 **Semantics:**
 - Included files are deep-merged (objects recursively merged, arrays concatenated, primitives: local wins)
@@ -574,22 +274,7 @@ Configured via `gateway.reload`:
 
 ### Runtime Overrides
 
-Programmatic in-process config overrides that bypass file I/O:
-
-```typescript
-import { setConfigOverride, unsetConfigOverride, applyConfigOverrides } from "./runtime-overrides";
-
-// Set a dotpath override (survives config reload)
-setConfigOverride("agents.defaults.timeoutSeconds", 600);
-
-// Remove an override
-unsetConfigOverride("agents.defaults.timeoutSeconds");
-
-// Applied as the last step in loadConfig()
-const cfg = applyConfigOverrides(loadedConfig);
-```
-
-Overrides are stored in a module-level `OverrideTree` (in-memory only, cleared on process restart).
+Programmatic in-process config overrides that bypass file I/O. Use `setConfigOverride(dotpath, value)` to set an override that survives config reload, and `unsetConfigOverride(dotpath)` to remove it. Overrides are applied as the last step in `loadConfig()` and stored in a module-level OverrideTree (in-memory only, cleared on process restart).
 
 **Source:** `src/config/runtime-overrides.ts`
 
@@ -599,78 +284,15 @@ Overrides are stored in a module-level `OverrideTree` (in-memory only, cleared o
 
 ### Global Defaults (`agents.defaults`)
 
-Applied to all agents unless overridden at the agent level:
-
-```json5
-{
-  agents: {
-    defaults: {
-      model: { primary: "anthropic/claude-opus-4-6" },
-      maxConcurrent: 3,
-      workspace: "./workspace",
-      sandbox: { docker: { image: "node:22" } }
-    }
-  }
-}
-```
+Applied to all agents unless overridden at the agent level. Covers model, maxConcurrent, workspace, sandbox, and all other agent settings.
 
 ### Per-Agent Config (`agents.list[]`)
 
-Each agent entry can override any default:
-
-```json5
-{
-  agents: {
-    list: [
-      {
-        id: "code-agent",
-        default: true,
-        model: { primary: "anthropic/claude-opus-4-6" },
-        workspace: "./code-workspace",
-        identity: {
-          name: "CodeBot",
-          emoji: "🤖",
-          avatar: "bot.png"
-        },
-        heartbeat: {
-          every: "1h",
-          target: "slack"
-        },
-        sandbox: {
-          docker: {
-            image: "custom-sandbox:latest",
-            network: "none"
-          }
-        }
-      },
-      {
-        id: "chat-agent",
-        model: { primary: "anthropic/claude-sonnet-4-5" }
-      }
-    ]
-  }
-}
-```
+Each agent entry can override any default field. Agent entries have an `id`, optional `default: true` flag, `model`, `workspace`, `identity` (name, emoji, avatar), `heartbeat`, `sandbox`, and all other agent-level settings.
 
 ### Per-Channel Config
 
-Channels can be configured globally (under `channels.defaults`) or per-channel-instance:
-
-```json5
-{
-  channels: {
-    defaults: {
-      // Applied across all channels (channel-specific schema)
-    },
-    slack: {
-      // Slack-specific config
-    },
-    discord: {
-      // Discord-specific config
-    }
-  }
-}
-```
+Channels can be configured globally (under `channels.defaults`) or per-channel-instance (under `channels.<channelId>`).
 
 ---
 
@@ -680,37 +302,11 @@ OpenClaw does not have a built-in "profile" concept for the config file itself, 
 
 ### Auth Profiles (`auth.profiles`)
 
-Multiple auth credentials per provider, with ordered selection:
-
-```json5
-{
-  auth: {
-    profiles: {
-      "primary-anthropic": { provider: "anthropic", mode: "api_key" },
-      "backup-anthropic": { provider: "anthropic", mode: "oauth" }
-    },
-    order: {
-      anthropic: ["primary-anthropic", "backup-anthropic"]
-    }
-  }
-}
-```
+Multiple auth credentials per provider, with ordered selection via `auth.order.<provider>`.
 
 ### Browser Profiles (`browser.profiles`)
 
-Named Chrome/CDP browser instances:
-
-```json5
-{
-  browser: {
-    defaultProfile: "main",
-    profiles: {
-      "main": { cdpPort: 9222, driver: "clawd", color: "#4A90D9" },
-      "dev": { cdpPort: 9223, color: "#E74C3C" }
-    }
-  }
-}
-```
+Named Chrome/CDP browser instances, each with a `cdpPort`, `driver`, and `color`. Selected via `browser.defaultProfile`.
 
 ---
 

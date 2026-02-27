@@ -318,84 +318,28 @@ extensions/<channel-id>/
     └── runtime.ts           # PluginRuntime accessor
 ```
 
-### Step 2: Write `openclaw.plugin.json`
+### Step 2: Write the manifest
 
-```json
-{
-  "id": "<channel-id>",
-  "channels": ["<channel-id>"],
-  "configSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {}
-  }
-}
-```
+The `openclaw.plugin.json` manifest declares the plugin `id`, `channels` array (listing the channel IDs it provides), and a `configSchema` object for channel-specific config validation.
 
-### Step 3: Implement `ChannelPlugin` in `src/channel.ts`
+### Step 3: Implement `ChannelPlugin`
 
-Minimum required fields:
+The minimum required fields on a `ChannelPlugin` are:
 
-```typescript
-import type { ChannelPlugin } from "openclaw/plugin-sdk";
+- **`id`** — unique channel identifier
+- **`meta`** — channel metadata: id, label, selectionLabel, docsPath, blurb
+- **`capabilities`** — supported chat types (direct, group, etc.) and media support flag
+- **`config`** — adapter with `listAccountIds`, `resolveAccount`, `isConfigured`, `describeAccount`
+- **`outbound`** — delivery config: `deliveryMode` (direct/gateway/hybrid), `textChunkLimit`, and `sendText` method
+- **`gateway`** — adapter with `startAccount` to start the channel monitor/listener
 
-export const myPlugin: ChannelPlugin = {
-  id: "mychannel",
-  meta: {
-    id: "mychannel",
-    label: "My Channel",
-    selectionLabel: "My Channel (API)",
-    docsPath: "/channels/mychannel",
-    blurb: "description",
-  },
-  capabilities: {
-    chatTypes: ["direct", "group"],   // what chat types this channel supports
-    media: true,
-  },
-  config: {
-    listAccountIds: (cfg) => [...],
-    resolveAccount: (cfg, accountId) => resolveMyAccount({ cfg, accountId }),
-    isConfigured: (account) => Boolean(account.token),
-    describeAccount: (account) => ({ accountId: account.accountId, ... }),
-  },
-  outbound: {
-    deliveryMode: "direct",           // "direct" | "gateway" | "hybrid"
-    textChunkLimit: 4000,
-    sendText: async ({ to, text, accountId }) => {
-      const result = await myChannelSend(to, text);
-      return { channel: "mychannel", messageId: result.id };
-    },
-  },
-  gateway: {
-    startAccount: async (ctx) => {
-      // Start the channel monitor/listener for this account
-      return myChannelMonitor({ token: ctx.account.token, ... });
-    },
-  },
-};
-```
+All other adapters (security, groups, mentions, threading, actions, heartbeat, directory, etc.) are optional and provide progressively richer integration.
 
-### Step 4: Write `index.ts` (plugin entrypoint)
+### Step 4: Write the plugin entrypoint
 
-```typescript
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
-import { myPlugin } from "./src/channel.js";
-import { setMyRuntime } from "./src/runtime.js";
+The `index.ts` entrypoint exports a plugin definition with `id`, `name`, `description`, `configSchema`, and a `register(api)` function that stores the runtime reference and calls `api.registerChannel({ plugin: myPlugin })`.
 
-export default {
-  id: "mychannel",
-  name: "My Channel",
-  description: "My Channel plugin",
-  configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
-    setMyRuntime(api.runtime);
-    api.registerChannel({ plugin: myPlugin });
-  },
-};
-```
-
-### Step 5: Register in `src/channels/registry.ts` (core channels only)
+### Step 5: Register in the channel registry (core channels only)
 
 For external/third-party channels this step is skipped — the plugin registry picks them up automatically via `discoverOpenClawPlugins()`.
 
@@ -406,45 +350,11 @@ For **core bundled channels** (telegram, whatsapp, discord, etc.), add to:
 
 ### Step 6: Add a ChannelDock entry (for core channels)
 
-In `src/channels/dock.ts`, add to the `DOCKS` record:
-
-```typescript
-const DOCKS: Record<ChatChannelId, ChannelDock> = {
-  // ...
-  mychannel: {
-    id: "mychannel",
-    capabilities: { chatTypes: ["direct", "group"], media: true },
-    outbound: { textChunkLimit: 4000 },
-    config: {
-      resolveAllowFrom: ({ cfg }) => cfg.channels?.mychannel?.allowFrom ?? [],
-      formatAllowFrom: ({ allowFrom }) => allowFrom.map(String),
-    },
-    groups: {
-      resolveRequireMention: resolveMyChannelGroupRequireMention,
-      resolveToolPolicy: resolveMyChannelGroupToolPolicy,
-    },
-  },
-};
-```
+In `src/channels/dock.ts`, add to the `DOCKS` record with: `id`, `capabilities`, `outbound` (textChunkLimit), `config` (resolveAllowFrom, formatAllowFrom), and `groups` (resolveRequireMention, resolveToolPolicy).
 
 ### Step 7: Wire up inbound events
 
-Inside `gateway.startAccount()`, start a monitor that produces `MsgContext` objects and calls `dispatchInboundMessage()`:
-
-```typescript
-// Inside the monitor:
-const ctx: MsgContext = {
-  Body: message.text,
-  From: message.senderId,
-  To: accountPhoneOrId,
-  SessionKey: buildAgentPeerSessionKey({ agentId, channel: "mychannel", peerId: senderId }),
-  AccountId: accountId,
-  ChatType: message.isGroup ? "group" : "direct",
-  Provider: "mychannel",
-};
-
-await dispatchInboundMessage({ ctx, cfg, dispatcher });
-```
+Inside `gateway.startAccount()`, start a monitor that normalizes platform events into `MsgContext` objects (with Body, From, To, SessionKey, AccountId, ChatType, Provider fields) and calls `dispatchInboundMessage()`.
 
 ---
 

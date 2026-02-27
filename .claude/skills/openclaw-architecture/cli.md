@@ -34,30 +34,13 @@ process.argv
 
 **File:** `src/cli/program/build-program.ts`
 
-```typescript
-buildProgram()
-  ├─ new Command()                     // Commander root
-  ├─ createProgramContext()            // Version + channel options
-  ├─ setProgramContext()               // Store ctx on program for later retrieval
-  ├─ configureProgramHelp()            // Custom help formatting
-  ├─ registerPreActionHooks()          // Global preAction hook
-  └─ registerProgramCommands()
-       ├─ registerCoreCliCommands()    // Core command group
-       └─ registerSubCliCommands()     // Sub-CLI group
-```
+`buildProgram()` creates a Commander root program, attaches a `ProgramContext` (version + channel options), configures custom help formatting, registers a global preAction hook, then registers both core and sub-CLI command groups.
 
 ### ProgramContext
 
 **File:** `src/cli/program/context.ts`
 
-```typescript
-type ProgramContext = {
-  programVersion: string;       // From VERSION constant
-  channelOptions: string[];     // Available messaging channels
-  messageChannelOptions: string; // Pipe-joined: "whatsapp|telegram|slack|..."
-  agentChannelOptions: string;  // Includes "last" prefix
-};
-```
+The `ProgramContext` holds: `programVersion` (from VERSION constant), `channelOptions` (available messaging channels), `messageChannelOptions` (pipe-joined channel names), and `agentChannelOptions` (includes "last" prefix for agent routing).
 
 ---
 
@@ -236,21 +219,7 @@ Commands exempt from config guard: `doctor`, `completion`
 
 **Files:** `src/cli/gateway-rpc.ts`, `src/cli/gateway-cli/call.ts`
 
-All CLI-to-Gateway communication goes through a single WebSocket RPC call:
-
-```typescript
-callGateway({
-  url?: string,       // Default: gateway.remote.url from config
-  token?: string,     // Auth token
-  password?: string,  // Password auth
-  method: string,     // RPC method name (e.g., "health", "usage.cost", "cron.*")
-  params?: unknown,   // JSON params
-  expectFinal?: boolean, // Wait for agent final response
-  timeoutMs: number,  // Default: 10,000ms (10s)
-  clientName: "cli",  // GATEWAY_CLIENT_NAMES.CLI
-  mode: "cli",        // GATEWAY_CLIENT_MODES.CLI
-})
-```
+All CLI-to-Gateway communication goes through a single WebSocket RPC call. The `callGateway()` function accepts: optional `url` (defaults to gateway.remote.url from config), auth credentials (`token` or `password`), `method` (RPC method name like "health", "usage.cost", "cron.*"), optional JSON `params`, `expectFinal` flag (wait for agent final response), `timeoutMs` (default 10000ms), `clientName` ("cli"), and `mode` ("cli").
 
 ### Standard Gateway Options (added to commands via `gatewayCallOpts`)
 
@@ -382,17 +351,7 @@ Plus any commands registered via the auto-reply commands registry.
 
 **File:** `src/tui/tui-types.ts`
 
-```typescript
-TuiStateAccess {
-  agentDefaultId, sessionMainKey, sessionScope,
-  agents[], currentAgentId, currentSessionKey, currentSessionId,
-  activeChatRunId, historyLoaded, sessionInfo,
-  initialSessionApplied, isConnected, autoMessageSent,
-  toolsExpanded, showThinking,
-  connectionStatus, activityStatus,
-  statusTimeout, lastCtrlCAt
-}
-```
+The TUI state tracks: agent default ID, session main key, session scope, agents list, current agent/session IDs, active chat run ID, history loaded flag, session info, connection and activity status, tool expansion and thinking display toggles, and Ctrl-C tracking for exit.
 
 ### GatewayChatClient
 
@@ -449,14 +408,7 @@ openclaw completion
 
 ### Profile Management
 
-The installer adds/updates a `# OpenClaw Completion` section in the shell profile:
-
-```bash
-# OpenClaw Completion
-source "/path/to/state/completions/openclaw.zsh"
-```
-
-Detects and migrates "slow dynamic completion" (`source <(openclaw completion ...)`) to the faster cached approach.
+The installer adds/updates an `# OpenClaw Completion` section in the shell profile that sources the cached completion script. It detects and migrates "slow dynamic completion" (inline `source <(...)`) to the faster cached approach.
 
 ---
 
@@ -511,37 +463,6 @@ Key utilities used throughout the CLI:
 | `getFlagValue(argv, name)` | Get flag value |
 | `buildParseArgv(params)` | Normalize argv for Commander |
 | `shouldMigrateState(argv)` | Decide if state migration needed |
-
----
-
-## Command Pattern
-
-All commands follow a consistent implementation pattern:
-
-```typescript
-// 1. CLI registration (src/cli/*.ts or src/cli/program/register.*.ts)
-program
-  .command("name [args]")
-  .description("...")
-  .option("--flag", "description", defaultValue)
-  .addHelpText("after", () => `\nExamples:\n...`)
-  .action(async (opts) => {
-    await runCommandWithRuntime(defaultRuntime, async () => {
-      await theCommand(opts, defaultRuntime);  // Delegate to commands/
-    });
-  });
-
-// 2. Command implementation (src/commands/*.ts)
-export async function theCommand(
-  opts: TheCommandOptions,
-  runtime: RuntimeEnv = defaultRuntime,
-): Promise<void> {
-  // Uses @clack/prompts for interactive UI
-  // Calls gateway, config, or local services
-}
-```
-
-`runCommandWithRuntime()` wraps the action with error handling (logs + exits with code 1 on failure).
 
 ---
 

@@ -2,22 +2,26 @@
 
 ## Overview
 
-OpenClaw uses a modular plugin system supporting 10 distinct plugin types. Plugins extend functionality without modifying core code.
+OpenClaw uses a modular plugin system. There is **1 exclusive plugin kind** (`"memory"` — only one can be active) and **10 registration methods** that any plugin can use. A single plugin can call multiple registration methods simultaneously to provide channels, tools, hooks, and more in one package.
 
-## Plugin Types
+## Registration Methods
 
-| Type | Purpose | Example |
-|------|---------|---------|
-| **Channel** | Messaging platform integrations | Telegram, WhatsApp, Discord |
-| **Provider** | LLM/auth providers | OpenRouter, Anthropic, OpenAI |
-| **Tool** | Agent tools | MCP adapter, file tools |
-| **Memory** | Session memory (exclusive slot) | Custom memory backends |
-| **Service** | Background services | Cron jobs, monitoring |
-| **CLI** | Extend CLI commands | Custom commands |
-| **Hook** | Lifecycle event handlers | Logging, analytics |
-| **Command** | Slash commands (bypass LLM) | /tts, /status |
-| **HTTP** | HTTP route handlers | Custom API endpoints |
-| **Gateway Method** | WebSocket RPC methods | Custom gateway ops |
+| Registration Method | Purpose | Example |
+|---------------------|---------|---------|
+| **`registerChannel`** | Messaging platform integrations | Telegram, WhatsApp, Discord |
+| **`registerProvider`** | LLM/auth providers | OpenRouter, Anthropic, OpenAI |
+| **`registerTool`** | Agent tools | MCP adapter, file tools |
+| **`registerService`** | Background services | Monitoring, sync |
+| **`registerCli`** | Extend CLI commands | Custom commands |
+| **`registerHook`** | Lifecycle event handlers | Logging, analytics |
+| **`registerCommand`** | Slash commands (bypass LLM) | /tts, /status |
+| **`registerHttpHandler`** | HTTP route handlers | Custom API endpoints |
+| **`registerHttpRoute`** | HTTP route handlers (alt) | Custom API endpoints |
+| **`registerGatewayMethod`** | WebSocket RPC methods | Custom gateway ops |
+
+### Exclusive Plugin Kind
+
+Only `"memory"` is an exclusive kind — set via `kind: "memory"` in the manifest. All other plugins have `kind: null` and use registration methods freely.
 
 ## Plugin Locations
 
@@ -29,115 +33,30 @@ extensions/                 # Bundled plugins (lowest priority)
 
 ## Plugin Definition
 
-### Structure
-
-```typescript
-// plugin.ts
-export const plugin: OpenClawPluginDefinition = {
-  id: "my-plugin",
-  name: "My Plugin",
-  description: "Does something useful",
-  version: "1.0.0",
-
-  // Config schema (Zod-compatible)
-  configSchema: {
-    safeParse: (value) => mySchema.safeParse(value),
-    uiHints: {
-      apiKey: { sensitive: true, label: "API Key" }
-    }
-  },
-
-  // Called when plugin loads
-  register: (api) => {
-    // Register tools, hooks, etc.
-  },
-
-  // Called when plugin activates
-  activate: (api) => {
-    // Start services, etc.
-  }
-};
-```
+A plugin definition exports an object with: `id`, `name`, `description`, `version`, an optional `configSchema` (Zod-compatible with `safeParse` and optional `uiHints` for marking fields like API keys as sensitive), a `register(api)` callback called when the plugin loads, and an optional `activate(api)` callback called when the plugin activates.
 
 ### Manifest (openclaw.plugin.json)
 
-```json
-{
-  "id": "my-plugin",
-  "name": "My Plugin",
-  "version": "1.0.0",
-  "description": "Does something useful",
-  "main": "./dist/index.js",
-  "kind": null
-}
-```
+The manifest file declares the plugin's `id`, `name`, `version`, `description`, `main` entry point (path to the compiled JS), and `kind` (null for normal plugins, `"memory"` for the exclusive memory slot).
 
 ## Plugin API
 
-### Core Methods
+The `OpenClawPluginApi` object passed to `register()` and `activate()` provides:
 
-```typescript
-type OpenClawPluginApi = {
-  id: string;
-  name: string;
-  config: OpenClawConfig;
-  pluginConfig?: Record<string, unknown>;
-  runtime: PluginRuntime;
-  logger: PluginLogger;
-
-  // Registration methods
-  registerTool: (tool, opts?) => void;
-  registerHook: (events, handler, opts?) => void;
-  registerChannel: (registration) => void;
-  registerProvider: (provider) => void;
-  registerService: (service) => void;
-  registerCli: (registrar, opts?) => void;
-  registerCommand: (command) => void;
-  registerHttpHandler: (handler) => void;
-  registerHttpRoute: (params) => void;
-  registerGatewayMethod: (method, handler) => void;
-
-  // Lifecycle hooks
-  on: (hookName, handler, opts?) => void;
-
-  // Utilities
-  resolvePath: (input) => string;
-};
-```
+- **Identity:** `id`, `name`
+- **Config access:** `config` (full OpenClaw config), `pluginConfig` (plugin-specific config from `plugins.entries.<id>.config`)
+- **Runtime:** `runtime` (PluginRuntime), `logger` (PluginLogger)
+- **All 10 registration methods** listed above
+- **Lifecycle hooks:** `on(hookName, handler, opts)` — subscribe to named lifecycle events
+- **Utilities:** `resolvePath(input)` — resolve relative paths against plugin directory
 
 ### Tool Registration
 
-```typescript
-// Simple tool
-api.registerTool({
-  name: "my_tool",
-  description: "Does something",
-  parameters: z.object({ input: z.string() }),
-  execute: async ({ input }) => ({ result: input.toUpperCase() })
-});
-
-// Tool factory (context-aware)
-api.registerTool(
-  (ctx) => ({
-    name: "workspace_tool",
-    description: `Operates in ${ctx.workspaceDir}`,
-    execute: async () => { /* ... */ }
-  }),
-  { optional: true }  // Only available if context matches
-);
-```
+Tools are registered via `registerTool()` with a name, description, Zod parameter schema, and async execute function. Tools can also be registered as **context-aware factories** — a function receiving a context object and returning the tool definition, optionally with `{ optional: true }` so the tool only appears when the context matches.
 
 ### Hook Registration
 
-```typescript
-api.registerHook(
-  "llm_output",
-  async (event, ctx) => {
-    console.log(`Model ${event.model} used ${event.usage?.total} tokens`);
-  },
-  { priority: 10 }  // Higher = runs first
-);
-```
+Hooks are registered via `registerHook(eventName, handler, opts)`. The handler receives the event object and context. An optional `priority` number controls ordering (higher runs first).
 
 ## Lifecycle Hooks
 
@@ -161,147 +80,55 @@ api.registerHook(
 
 ## Plugin Discovery
 
-```typescript
-// discovery.ts
-function discoverPlugins(params: DiscoverParams): PluginSource[] {
-  // 1. Scan bundled extensions/
-  // 2. Scan global ~/.openclaw/extensions/
-  // 3. Scan workspace .openclaw/extensions/
-  // 4. Check config plugins.entries
-  // Return merged list with priority
-}
-```
+Discovery scans four sources in priority order:
+
+1. Bundled `extensions/` directory (lowest priority)
+2. Global `~/.openclaw/extensions/` directory
+3. Workspace `.openclaw/extensions/` directory
+4. Config `plugins.entries` (highest priority)
+
+The merged list is returned with priority metadata. Source: `discovery.ts`
 
 ## Plugin Loading
 
-```typescript
-// loader.ts
-async function loadPlugin(source: PluginSource): Promise<LoadedPlugin> {
-  // 1. Read manifest (openclaw.plugin.json)
-  // 2. Import main module
-  // 3. Validate definition
-  // 4. Create plugin API instance
-  // 5. Call register()
-  // 6. Return loaded plugin
-}
-```
+Loading follows a 6-step pipeline:
 
-## Config Schema
+1. Read manifest (`openclaw.plugin.json`)
+2. Import main module
+3. Validate definition
+4. Create plugin API instance
+5. Call `register()`
+6. Return loaded plugin
 
-```json
-{
-  "plugins": {
-    "entries": {
-      "plugin-id": {
-        "enabled": true,
-        "config": {
-          "key": "value"
-        }
-      }
-    }
-  }
-}
-```
+Source: `loader.ts`
+
+## Config
+
+Plugin management is configured under `plugins` in the main config, with fields for: `enabled` (global toggle), `allow`/`deny` lists, `load.paths` (extra plugin dirs), `slots.memory` (which plugin fills the memory slot), `entries` (per-plugin enable/config), and `installs` (source and spec for npm/archive/path installs).
 
 ## Tool Visibility
 
-For plugin tools to be visible to agents:
-
-```json
-{
-  "tools": {
-    "allow": ["group:openclaw", "group:plugins"]
-  },
-  "agents": {
-    "defaults": {
-      "sandbox": {
-        "mode": "non-main"  // Required for plugin tools
-      }
-    }
-  }
-}
-```
+For plugin tools to be visible to agents, the agent's tool policy must include `group:plugins` in its allow list (or use a profile like `full` that includes all tools). The default tool profiles include plugin tools when `group:openclaw` or `group:plugins` is in the allow list.
 
 ## Memory Plugins (Exclusive)
 
-Memory plugins are special - only one can be active:
-
-```typescript
-export const plugin: OpenClawPluginDefinition = {
-  id: "custom-memory",
-  kind: "memory",  // Exclusive slot
-  register: (api) => {
-    // Override default memory handling
-  }
-};
-```
+Memory plugins set `kind: "memory"` in their definition. Only one memory plugin can be active at a time — the active one is selected via `plugins.slots.memory` in config. Memory plugins override the default built-in memory handling when registered.
 
 ## Provider Plugins
 
-```typescript
-api.registerProvider({
-  id: "my-provider",
-  label: "My LLM Provider",
-  docsPath: "providers/my-provider",
-  aliases: ["myp"],
-  models: {
-    "my-model": { contextWindow: 100000 }
-  },
-  auth: [
-    {
-      id: "api_key",
-      label: "API Key",
-      kind: "api_key",
-      run: async (ctx) => {
-        // Prompt for API key, return profiles
-      }
-    }
-  ]
-});
-```
+Provider plugins register via `registerProvider()` with: `id`, `label`, `docsPath`, optional `aliases`, a `models` map (model ID to context window and capabilities), and an `auth` array defining authentication flows (API key, OAuth, token) with their setup handlers.
 
 ## Command Plugins
 
-```typescript
-api.registerCommand({
-  name: "status",
-  description: "Show system status",
-  acceptsArgs: false,
-  requireAuth: true,
-  handler: async (ctx) => {
-    return { text: "System is running" };
-  }
-});
-```
+Command plugins register slash commands via `registerCommand()` with: `name`, `description`, `acceptsArgs` flag, optional `requireAuth` flag, and a `handler` function that receives context and returns a response object.
 
 ## Service Plugins
 
-```typescript
-api.registerService({
-  id: "my-service",
-  start: async (ctx) => {
-    // Start background work
-    setInterval(() => { /* ... */ }, 60000);
-  },
-  stop: async (ctx) => {
-    // Cleanup
-  }
-});
-```
+Service plugins register background services via `registerService()` with: `id`, `start(ctx)` (called when the gateway boots), and `stop(ctx)` (called on shutdown for cleanup).
 
 ## CLI Extension
 
-```typescript
-api.registerCli(
-  (ctx) => {
-    ctx.program
-      .command("my-cmd")
-      .description("My custom command")
-      .action(async () => { /* ... */ });
-  },
-  { commands: ["my-cmd"] }
-);
-```
+Plugins extend the CLI via `registerCli(registrar, opts)`. The registrar function receives the Commander program context and can add commands. The `opts.commands` array declares which command names the plugin provides (used for lazy loading optimization).
 
 ## Key Files
 
@@ -322,16 +149,7 @@ api.registerCli(
 
 ## Diagnostics
 
-```typescript
-type PluginDiagnostic = {
-  level: "warn" | "error";
-  message: string;
-  pluginId?: string;
-  source?: string;
-};
-```
-
-Diagnostics are collected during load and reported via:
+Plugin diagnostics are collected during load as structured records with `level` (warn/error), `message`, optional `pluginId`, and optional `source`. They are reported via:
 - Gateway logs
 - `openclaw plugins status`
 - Health endpoint
