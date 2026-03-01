@@ -32,6 +32,7 @@ function printUsage() {
       "  --skip-install           Skip pnpm install",
       "  --skip-build             Skip pnpm build",
       "  --skip-check             Skip pnpm check",
+      "  --skip-health-check      Skip post-sync health check before --promote",
       "  -h, --help               Show this help",
       "",
       "Examples:",
@@ -83,6 +84,7 @@ function parseArgs(argv) {
     skipInstall: false,
     skipBuild: false,
     skipCheck: false,
+    skipHealthCheck: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -133,6 +135,10 @@ function parseArgs(argv) {
     }
     if (arg === "--skip-check") {
       options.skipCheck = true;
+      continue;
+    }
+    if (arg === "--skip-health-check") {
+      options.skipHealthCheck = true;
       continue;
     }
     throw new Error(`Unknown option: ${arg}`);
@@ -212,6 +218,10 @@ function main() {
     run("pnpm", ["openclaw", "cron", "status"]);
     run("pnpm", ["openclaw", "cron", "list"]);
     run("pnpm", ["openclaw", "system", "heartbeat", "last"]);
+  }
+
+  if (options.promote && !options.skipHealthCheck) {
+    run("node", ["scripts/post-sync-health-check.mjs"]);
   }
 
   if (options.promote) {

@@ -14,8 +14,8 @@ Upstream files stay untouched. Fork customizations live in separate, fork-only f
 | Layer | Files | Merge behavior |
 |---|---|---|
 | Upstream (accept wholesale) | `docker-compose.yml`, `Dockerfile`, `src/**`, all app code | Always take theirs |
-| Fork overlay | `docker-compose.override.yml`, `.claude/skills/**`, `scripts/sync-upstream-safe.mjs` | Upstream doesn't have these — no conflicts |
-| Minor fork additions | `package.json` (sync script), `.gitignore` | Low conflict risk, trivial to resolve |
+| Fork overlay | `docker-compose.override.yml`, `.claude/skills/**`, `scripts/sync-upstream-safe.mjs`, `scripts/post-sync-health-check.mjs` | Upstream doesn't have these — no conflicts |
+| Minor fork additions | `package.json` (sync scripts), `.gitignore` | Low conflict risk, trivial to resolve |
 
 `docker-compose.override.yml` is the key mechanism — Docker Compose auto-merges it on top of the upstream `docker-compose.yml`, so upstream can change their compose file freely without conflicting with our named volumes, user overrides, or env var cleanup.
 
@@ -84,6 +84,7 @@ git push origin main
 | `--runtime-checks` | Run cron/heartbeat checks via CLI |
 | `--promote` | FF-merge sync branch into main |
 | `--push` | Push origin/main (requires `--promote`) |
+| `--skip-health-check` | Skip automated health check before `--promote` |
 | `--branch <name>` | Set explicit sync branch name |
 
 ## Conflict Policy
@@ -102,19 +103,21 @@ docker compose up -d openclaw-gateway
 
 ## Post-Sync: Validation
 
+`--promote` now automatically runs a health check gate before fast-forwarding. If any check fails, promotion is blocked. To bypass: `--skip-health-check`.
+
+Run the health check standalone at any time:
+
 ```bash
-# Check gateway logs for errors
-docker compose logs --tail 50 openclaw-gateway
+pnpm sync:health
+```
 
-# Cron health
-MSYS_NO_PATHCONV=1 docker exec openclaw-openclaw-gateway-1 \
-  node dist/index.js cron list
-MSYS_NO_PATHCONV=1 docker exec openclaw-openclaw-gateway-1 \
-  node dist/index.js cron runs --id ddee59f0-517e-4255-83b0-46ff5f28b091 --limit 5
+This verifies: Docker engine reachable, gateway container running, no fatal errors in recent logs, cron jobs loaded, and Telegram provider started (warn-only).
 
-# Telegram bot heartbeat
+For deeper cron inspection, use the manual command:
+
+```bash
 MSYS_NO_PATHCONV=1 docker exec openclaw-openclaw-gateway-1 \
-  node dist/index.js system heartbeat last
+  node dist/index.js cron runs --id <jobId> --limit 5
 ```
 
 **Note**: Use `MSYS_NO_PATHCONV=1` prefix on Windows Git Bash to prevent path mangling in `docker exec` commands.
