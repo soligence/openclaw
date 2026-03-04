@@ -81,7 +81,7 @@ function main() {
 
   // Fetch logs once for checks 3 and 5
   {
-    const res = capture("docker", ["compose", "logs", "--tail", "100", DOCKER_COMPOSE_SERVICE]);
+    const res = capture("docker", ["compose", "logs", "--tail", "200", DOCKER_COMPOSE_SERVICE]);
     logs = res.ok ? res.stdout : "";
   }
 

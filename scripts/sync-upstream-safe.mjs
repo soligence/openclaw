@@ -71,6 +71,11 @@ function refExists(ref) {
   return result.status === 0;
 }
 
+function isValidBranchName(name) {
+  const result = spawnSync("git", ["check-ref-format", "--branch", name], { stdio: "ignore" });
+  return result.status === 0;
+}
+
 function parseArgs(argv) {
   const options = {
     baseBranch: "main",
@@ -156,6 +161,12 @@ function parseArgs(argv) {
   if (options.push && !options.promote) {
     throw new Error("--push requires --promote");
   }
+  if (options.allowDirty && options.promote) {
+    throw new Error("--allow-dirty cannot be used with --promote");
+  }
+  if (options.push && options.skipHealthCheck) {
+    throw new Error("--push cannot be used with --skip-health-check");
+  }
 
   return options;
 }
@@ -188,6 +199,12 @@ function main() {
   }
   if (!refExists(options.upstreamRef)) {
     throw new Error(`Upstream ref not found: ${options.upstreamRef}`);
+  }
+  if (!isValidBranchName(options.baseBranch)) {
+    throw new Error(`Invalid base branch name: ${options.baseBranch}`);
+  }
+  if (!isValidBranchName(options.branch)) {
+    throw new Error(`Invalid sync branch name: ${options.branch}`);
   }
   if (refExists(`refs/heads/${options.branch}`)) {
     throw new Error(`Local branch already exists: ${options.branch}`);
