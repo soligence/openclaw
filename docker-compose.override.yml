@@ -10,18 +10,18 @@ services:
   openclaw-gateway:
     user: "1000:1000" # node user — named volumes have correct ownership
     environment:
-      CLAUDE_AI_SESSION_KEY: ""   # unset — not used in this fork
-      CLAUDE_WEB_SESSION_KEY: ""  # unset — not used in this fork
-      CLAUDE_WEB_COOKIE: ""       # unset — not used in this fork
+      CLAUDE_AI_SESSION_KEY: "" # unset — not used in this fork
+      CLAUDE_WEB_SESSION_KEY: "" # unset — not used in this fork
+      CLAUDE_WEB_COOKIE: "" # unset — not used in this fork
     volumes:
       - openclaw-config:/home/node/.openclaw
       - openclaw-workspace:/home/node/.openclaw/workspace
 
   openclaw-cli:
     environment:
-      CLAUDE_AI_SESSION_KEY: ""   # unset — not used in this fork
-      CLAUDE_WEB_SESSION_KEY: ""  # unset — not used in this fork
-      CLAUDE_WEB_COOKIE: ""       # unset — not used in this fork
+      CLAUDE_AI_SESSION_KEY: "" # unset — not used in this fork
+      CLAUDE_WEB_SESSION_KEY: "" # unset — not used in this fork
+      CLAUDE_WEB_COOKIE: "" # unset — not used in this fork
     volumes:
       - openclaw-config:/home/node/.openclaw
       - openclaw-workspace:/home/node/.openclaw/workspace

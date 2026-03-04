@@ -167,7 +167,9 @@ function main() {
     }
   }
 
-  const remotes = capture("git", ["remote"]).split(/\r?\n/).map((s) => s.trim());
+  const remotes = capture("git", ["remote"])
+    .split(/\r?\n/)
+    .map((s) => s.trim());
   if (!remotes.includes("origin")) {
     throw new Error("Missing git remote: origin");
   }
