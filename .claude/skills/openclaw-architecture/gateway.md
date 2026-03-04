@@ -1,152 +1,49 @@
 # Gateway Architecture
 
-## Overview
+## Scope
 
-The Gateway is OpenClaw's central server component - a WebSocket/HTTP server that handles authentication, session management, plugin loading, and channel startup. Default port: **18789**.
+This document explains the gateway as OpenClaw's central runtime coordinator.
 
-## Core Components
+## Role In The System
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Gateway Server                              │
-│  server.impl.ts → startGatewayServer()                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────┐ │
-│  │   Auth      │  │  Sessions   │  │  Config Hot-Reload       │ │
-│  │  Layer      │  │  Manager    │  │  (config-reload.ts)      │ │
-│  └─────────────┘  └─────────────┘  └──────────────────────────┘ │
-│                                                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────┐ │
-│  │  Plugins    │  │  Channels   │  │  Gateway Methods         │ │
-│  │  Loader     │  │  Manager    │  │  (WebSocket RPC)         │ │
-│  └─────────────┘  └─────────────┘  └──────────────────────────┘ │
-│                                                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────┐ │
-│  │  Cron       │  │  Discovery  │  │  HTTP Endpoints          │ │
-│  │  Service    │  │  (mDNS)     │  │  (OpenAI compat, etc.)   │ │
-│  └─────────────┘  └─────────────┘  └──────────────────────────┘ │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+The gateway is the control and routing hub that:
+- Accepts inbound control/message events.
+- Applies auth and policy boundaries.
+- Coordinates agent execution.
+- Manages channels, plugins, and session state.
 
-## Authentication
+## High-Level Responsibilities
 
-### Auth Modes
+- Connection lifecycle: local/remote interfaces and request handling.
+- Auth and trust enforcement for operators and clients.
+- Runtime orchestration for channels, agents, and plugins.
+- Health, diagnostics, and controlled reload behavior.
 
-| Mode | Description | Config |
-|------|-------------|--------|
-| `none` | No authentication (local dev only) | Default when no token/password set |
-| `token` | Bearer token authentication | `gateway.auth.token` or `OPENCLAW_GATEWAY_TOKEN` |
-| `password` | Password authentication | `gateway.auth.password` or `OPENCLAW_GATEWAY_PASSWORD` |
-| `tailscale` | Tailscale identity verification | `gateway.auth.allowTailscale: true` |
-| `trusted-proxy` | Proxy-based identity (Nginx, Cloudflare, etc.) | `gateway.auth.trustedProxy` config |
+## Startup Model
 
-### Auth Resolution Flow
+At a high level:
+1. Load effective config.
+2. Initialize plugin/runtime registries.
+3. Bring up channel and service components.
+4. Expose gateway interfaces.
+5. Enter steady-state operation with health monitoring.
 
-Auth mode is resolved in `resolveGatewayAuth()` with the following priority:
+## Architectural Boundaries
 
-1. Explicit `authConfig.mode` (if set in config)
-2. Password present → `"password"` mode
-3. Token present → `"token"` mode
-4. Otherwise → `"none"` mode
+The gateway owns orchestration and policy.
+Agents own reasoning.
+Channels own transport specifics.
+Plugins extend capabilities through defined interfaces.
 
-### Authorization Flow
+## Common Failure Boundaries
 
-Authorization in `authorizeGatewayConnect()` proceeds through these steps:
+- Auth mode and origin/trust misconfiguration.
+- Plugin/channel initialization incompatibility.
+- Runtime reload assumptions that do not match stateful components.
 
-1. **Trusted-proxy check** — if mode is `"trusted-proxy"`, delegate to the trusted proxy authorizer immediately
-2. **Rate limit check** — if a limiter is configured and the IP is blocked, reject with `rateLimited: true`
-3. **Tailscale identity** — if `allowTailscale` is enabled, attempt Tailscale user verification; if it succeeds, authorize with method `"tailscale"`
-4. **Token/password verification** — verify against the configured credential based on the auth mode
+## When To Go Deeper
 
-## Bind Modes
-
-| Mode | Address | Use Case |
-|------|---------|----------|
-| `loopback` | 127.0.0.1 | Local-only access |
-| `lan` | 0.0.0.0 | LAN access |
-| `tailnet` | 100.64.x.x | Tailscale-only |
-| `auto` | Prefer loopback | Default |
-
-## HTTP Endpoints
-
-### OpenAI-Compatible API
-
-```
-POST /v1/chat/completions    # Chat completions (OpenAI format)
-POST /v1/responses           # OpenResponses API
-```
-
-These endpoints are enabled via `gateway.http.endpoints.chatCompletions.enabled` and `gateway.http.endpoints.responses.enabled` in config.
-
-### Health & Discovery
-
-```
-GET /health                  # Health check
-GET /discovery               # Service discovery (mDNS)
-```
-
-## WebSocket Protocol
-
-### Connection
-
-Clients connect via WebSocket to the gateway port and send a `connect` method with auth credentials (token or password). The gateway authenticates the connection and establishes a persistent session.
-
-### Gateway Methods
-
-Located in `server-methods/` directory:
-- `agent.ts` - Agent operations
-- `chat.ts` - Chat/conversation management
-- `config.ts` - Config operations
-- `sessions.ts` - Session management
-- `nodes.ts` - Remote node management
-- `exec-approval.ts` - Tool execution approval
-
-### Method Listing
-
-Gateway events include: `connect`, `disconnect`, `agent.run`, `agent.stop`, `chat.send`, `chat.history`, `config.get`, `config.patch`, `session.list`, `session.get`, and more. The full list is exported from `server-methods-list.ts`.
-
-## Startup Sequence
-
-The gateway starts via `startGatewayServer()` in `server.impl.ts`:
-
-1. **Load and migrate config** — read the config file snapshot
-2. **Load plugins** — discover and load all gateway plugins
-3. **Start channel manager** — create the channel manager from config
-4. **Start HTTP/WS server** — bind HTTP server to the configured port
-5. **Attach WebSocket handlers** — wire up gateway method dispatchers
-6. **Start sidecars** — launch cron service, mDNS discovery, maintenance tasks
-7. **Fire `gateway_start` hook** — notify all registered hook handlers
-
-## Config Hot-Reload
-
-The gateway supports live config reloading without restart. The config reloader (`config-reload.ts`) watches the config file for changes, validates the new config, applies the delta to the running gateway, and notifies connected clients.
-
-Reload triggers:
-- File system watch on `~/.openclaw/openclaw.json`
-- WebSocket method: `config.reload`
-- CLI: `openclaw config reload`
-
-## Rate Limiting
-
-Auth rate limiting (`auth-rate-limit.ts`) blocks IPs after repeated failed authentication attempts. Defaults: 5 max failed attempts in a 1-minute window, with a 5-minute block duration.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `server.impl.ts` | Main server startup |
-| `server.ts` | Exports and types |
-| `auth.ts` | Authentication logic |
-| `auth-rate-limit.ts` | Rate limiting |
-| `config-reload.ts` | Hot-reload handling |
-| `server-channels.ts` | Channel management |
-| `server-methods.ts` | Core RPC handlers |
-| `server-plugins.ts` | Plugin loading |
-| `server-http.ts` | HTTP endpoint handling |
-| `server-ws-runtime.ts` | WebSocket runtime |
-
-## Control UI
-
-Optional browser-based management interface, enabled via `gateway.controlUi.enabled` in config. Access at `http://localhost:18789/` when enabled.
+Move to code-level analysis when diagnosing:
+- Specific request/response handler behavior.
+- Startup sequencing defects.
+- Gateway method registration conflicts.

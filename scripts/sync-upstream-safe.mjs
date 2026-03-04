@@ -32,6 +32,7 @@ function printUsage() {
       "  --skip-install           Skip pnpm install",
       "  --skip-build             Skip pnpm build",
       "  --skip-check             Skip pnpm check",
+      "  --skip-health-check      Skip post-sync health check before --promote",
       "  -h, --help               Show this help",
       "",
       "Examples:",
@@ -70,6 +71,11 @@ function refExists(ref) {
   return result.status === 0;
 }
 
+function isValidBranchName(name) {
+  const result = spawnSync("git", ["check-ref-format", "--branch", name], { stdio: "ignore" });
+  return result.status === 0;
+}
+
 function parseArgs(argv) {
   const options = {
     baseBranch: "main",
@@ -83,6 +89,7 @@ function parseArgs(argv) {
     skipInstall: false,
     skipBuild: false,
     skipCheck: false,
+    skipHealthCheck: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -135,6 +142,10 @@ function parseArgs(argv) {
       options.skipCheck = true;
       continue;
     }
+    if (arg === "--skip-health-check") {
+      options.skipHealthCheck = true;
+      continue;
+    }
     throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -149,6 +160,12 @@ function parseArgs(argv) {
   }
   if (options.push && !options.promote) {
     throw new Error("--push requires --promote");
+  }
+  if (options.allowDirty && options.promote) {
+    throw new Error("--allow-dirty cannot be used with --promote");
+  }
+  if (options.push && options.skipHealthCheck) {
+    throw new Error("--push cannot be used with --skip-health-check");
   }
 
   return options;
@@ -167,13 +184,16 @@ function main() {
     }
   }
 
-  const remotes = capture("git", ["remote"])
-    .split(/\r?\n/)
-    .map((s) => s.trim());
-  if (!remotes.includes("origin")) {
+  const remotes = new Set(
+    capture("git", ["remote"])
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  if (!remotes.has("origin")) {
     throw new Error("Missing git remote: origin");
   }
-  if (!remotes.includes("upstream")) {
+  if (!remotes.has("upstream")) {
     throw new Error("Missing git remote: upstream");
   }
 
@@ -184,6 +204,12 @@ function main() {
   }
   if (!refExists(options.upstreamRef)) {
     throw new Error(`Upstream ref not found: ${options.upstreamRef}`);
+  }
+  if (!isValidBranchName(options.baseBranch)) {
+    throw new Error(`Invalid base branch name: ${options.baseBranch}`);
+  }
+  if (!isValidBranchName(options.branch)) {
+    throw new Error(`Invalid sync branch name: ${options.branch}`);
   }
   if (refExists(`refs/heads/${options.branch}`)) {
     throw new Error(`Local branch already exists: ${options.branch}`);
@@ -214,6 +240,10 @@ function main() {
     run("pnpm", ["openclaw", "cron", "status"]);
     run("pnpm", ["openclaw", "cron", "list"]);
     run("pnpm", ["openclaw", "system", "heartbeat", "last"]);
+  }
+
+  if (options.promote && !options.skipHealthCheck) {
+    run("node", ["scripts/post-sync-health-check.mjs"]);
   }
 
   if (options.promote) {
