@@ -1,101 +1,42 @@
 ---
 name: openclaw-architecture
-description: OpenClaw system architecture overview - gateway, plugins, agents, channels
+description: High-level OpenClaw architecture guide. Use when you need system understanding, component boundaries, or design-level reasoning across gateway, agents, channels, plugins, sessions, config, and deployment.
 ---
 
-# OpenClaw System Architecture
+# OpenClaw Architecture
 
-## Overview
+Use this skill for design-level system understanding.
 
-OpenClaw is a self-hosted AI assistant gateway that connects LLM agents to messaging channels (Telegram, WhatsApp, Discord, etc.) with a plugin-based architecture.
+Keep answers high-level:
+- Explain responsibilities and boundaries first.
+- Explain cross-component interactions second.
+- Drop to code only when explicitly requested.
 
-## High-Level Architecture
+## Core Model
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              CLI Layer                                   │
-│         openclaw [gateway|agent|config|plugins|channels|...]            │
-└────────────────────────────────┬────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Gateway Server                                 │
-│  - WebSocket + HTTP server (port 18789 default)                         │
-│  - Authentication (token, password, tailscale, trusted-proxy)           │
-│  - Session management, config hot-reload                                │
-│  - Plugin loading, channel startup                                      │
-└──────────┬──────────────────────┬──────────────────────┬───────────────┘
-           │                      │                      │
-           ▼                      ▼                      ▼
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐
-│  Agent Runtime   │  │  Plugin System   │  │   Channel Integrations   │
-│  - Tool pipeline │  │  - 10 register   │  │  - Telegram, WhatsApp    │
-│  - Policy chain  │  │    methods       │  │  - Discord, Slack, etc.  │
-│  - Sandbox       │  │  - Discovery     │  │  - Message routing       │
-│  - LLM providers │  │  - Lifecycle     │  │  - Session keys          │
-└──────────────────┘  └──────────────────┘  └──────────────────────────┘
-           │                      │                      │
-           └──────────────────────┼──────────────────────┘
-                                  ▼
-                    ┌─────────────────────────┐
-                    │    Config System        │
-                    │  ~/.openclaw/openclaw.json │
-                    │  - Zod validation       │
-                    │  - Hot reload           │
-                    │  - $include, ${ENV}     │
-                    └─────────────────────────┘
-```
+OpenClaw is a gateway-centered system:
+- Gateway: orchestrates runtime and policy boundaries.
+- Agents: reasoning and tool execution.
+- Channels: inbound/outbound transport adapters.
+- Plugins: extension mechanism for capabilities.
+- Sessions: context continuity boundaries.
+- Config: declarative control plane.
+- Deployment: host/container operating shape.
 
-## Documentation Map
+## Read-By-Need Map
 
-| Component | When to Read | File |
-|-----------|-------------|------|
-| **Gateway** | Server architecture, auth, WebSocket, startup | [gateway.md](gateway.md) |
-| **Agents** | Tool pipeline, sandbox, LLM providers, failover | [agents.md](agents.md) |
-| **Channels** | Message routing, channel plugins, adapters | [channels.md](channels.md) |
-| **Plugins** | Extension system, registration API, hooks | [plugins.md](plugins.md) |
-| **CLI** | Commands, TUI, shell completion | [cli.md](cli.md) |
-| **Config** | Schema, validation, hot-reload, $include | [config.md](config.md) |
-| **Sessions** | Session lifecycle, heartbeat, cron jobs | [sessions.md](sessions.md) |
-| **Deployment** | Docker setup, named volumes, sandbox config | [deployment.md](deployment.md) |
+- Gateway: [gateway.md](gateway.md)
+- Agents: [agents.md](agents.md)
+- Channels: [channels.md](channels.md)
+- Plugins: [plugins.md](plugins.md)
+- Sessions: [sessions.md](sessions.md)
+- Config: [config.md](config.md)
+- CLI: [cli.md](cli.md)
+- Deployment: [deployment.md](deployment.md)
 
-## Key Concepts
+## Output Pattern
 
-### Session Keys
-```
-agent:<agentId>:<channel>:<chatType>:<peerId>[:thread:<threadId>]
-```
-Example: `agent:main:telegram:direct:12345678` → see [sessions.md](sessions.md)
-
-### Tool Policy Pipeline
-```
-profile → byProvider → global → agent → group → sandbox
-```
-Each layer can allow/deny tools. Sandbox is most restrictive. → see [agents.md](agents.md)
-
-### Plugin Registration Methods
-OpenClaw has **1 exclusive plugin kind** (`"memory"` — only one active at a time) and **10 registration methods** that any plugin can use simultaneously:
-
-1. `registerChannel` (messaging platforms)
-2. `registerProvider` (LLM/auth)
-3. `registerTool` (agent tools)
-4. `registerService` (background)
-5. `registerCli` (extend commands)
-6. `registerHook` (lifecycle events)
-7. `registerCommand` (slash commands)
-8. `registerHttpHandler` / `registerHttpRoute` (HTTP routes)
-9. `registerGatewayMethod` (WebSocket RPC)
-
-A single plugin can call multiple registration methods. → see [plugins.md](plugins.md)
-
-### Config Hierarchy
-```
-Runtime defaults → Config file → $include → process.env → config.env → Runtime overrides
-```
-→ see [config.md](config.md)
-
-### Key Directories
-- `~/.openclaw/` — Config, state, extensions
-- `~/.openclaw/openclaw.json` — Main config file
-- `~/.openclaw/extensions/` — User plugins
-- `~/.openclaw/agents/` — Agent state, sessions
+1. State which layer owns the behavior.
+2. State expected interaction with adjacent layers.
+3. State likely tradeoffs/failure boundary.
+4. Suggest next validation step.
